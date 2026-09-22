@@ -1,16 +1,27 @@
 import axios from "axios";
 
+import { loginRequest, msalInstance } from "../authConfig";
+
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+
 const axiosInstance = axios.create({
-  baseURL: "http://localhost:8080",
+  baseURL: apiBaseUrl,
 });
 
 axiosInstance.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem("token");
+  async (config) => {
+    const account = msalInstance.getActiveAccount() ?? msalInstance.getAllAccounts()[0];
 
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (!account) {
+      return config;
     }
+
+    const tokenResponse = await msalInstance.acquireTokenSilent({
+      ...loginRequest,
+      account,
+    });
+
+    config.headers.Authorization = `Bearer ${tokenResponse.accessToken}`;
 
     return config;
   },

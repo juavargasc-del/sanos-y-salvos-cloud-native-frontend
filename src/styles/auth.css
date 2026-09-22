@@ -109,6 +109,104 @@
   box-shadow: 0 14px 24px rgba(201, 79, 124, 0.18);
 }
 
+.auth-msal-section {
+  margin-top: 14px;
+}
+
+.auth-button-secondary {
+  margin-top: 0;
+  background: #ffffff;
+  color: #c94f7c;
+  border: 1px solid #c94f7c;
+}
+
+.auth-button-secondary:hover:not(:disabled) {
+  background: #fff1f6;
+  box-shadow: none;
+}
+
+.auth-msal-account {
+  margin: 0 0 12px;
+  color: #666666;
+  font-size: 13px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.auth-token-claims {
+  margin: 0 0 14px;
+  padding: 14px;
+  border: 1px solid #f0bfd0;
+  border-radius: 14px;
+  background: #fffdfd;
+}
+
+.auth-token-claims h2 {
+  margin: 0 0 10px;
+  color: #333333;
+  font-size: 15px;
+}
+
+.auth-token-claims dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.auth-token-claims dl > div {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.auth-token-claims dt {
+  color: #c94f7c;
+  font-weight: 700;
+}
+
+.auth-token-claims dd {
+  min-width: 0;
+  margin: 0;
+  color: #555555;
+  overflow-wrap: anywhere;
+}
+
+.auth-api-result {
+  display: grid;
+  gap: 4px;
+  margin: 12px 0 14px;
+  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.auth-api-result-success {
+  background: #eefaf1;
+  color: #267a3e;
+  border-color: #b8dec2;
+}
+
+.auth-api-result-http,
+.auth-api-result-cors,
+.auth-api-result-token {
+  background: #fff1f1;
+  color: #b42318;
+  border-color: #f2b8b5;
+}
+
+.auth-microservice-tests {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.auth-microservice-tests .auth-api-result {
+  margin: 8px 0 0;
+}
+
 .auth-error {
   padding: 12px;
   border-radius: 12px;
