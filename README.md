@@ -6,7 +6,7 @@ Frontend oficial de la plataforma Sanos y Salvos, construido con React y Vite. S
 
 Este frontend permite a usuarios autenticados registrar mascotas, consultar sus mascotas, visualizar coincidencias y revisar el detalle de cada mascota. También incluye un área administrativa para gestionar usuarios, mascotas, coincidencias y un dashboard con indicadores operativos.
 
-La aplicación no mantiene persistencia propia ni implementa lógica de negocio de servidor. Todo acceso a datos se realiza mediante servicios HTTP centralizados que consumen el API Gateway expuesto en `http://localhost:8080`, el cual enruta las solicitudes hacia los microservicios correspondientes.
+La aplicación no mantiene persistencia propia ni implementa lógica de negocio de servidor. Todo acceso a datos se realiza mediante servicios HTTP centralizados que consumen el API Gateway configurado en `VITE_API_BASE_URL`, el cual enruta las solicitudes hacia los microservicios correspondientes.
 
 ## Arquitectura
 
@@ -88,7 +88,7 @@ El frontend fue desarrollado siguiendo una arquitectura basada en componentes, d
             Servicios HTTP (Axios)
                     │
                     ▼
-              API Gateway (8080)
+              API Gateway (VITE_API_BASE_URL)
                     │
      ┌──────────────┼──────────────┐
      ▼              ▼              ▼
@@ -113,7 +113,7 @@ El frontend fue desarrollado siguiendo una arquitectura basada en componentes, d
 
 La comunicación con el backend se centraliza en la instancia de Axios definida en `src/api/axiosConfig.js`.
 
-Todas las solicitudes se realizan al **API Gateway**, configurado con la URL base `http://localhost:8080`. El Gateway es el único punto de entrada del sistema y se encarga de redirigir cada petición al microservicio correspondiente.
+Todas las solicitudes se realizan al **API Gateway**, configurado mediante `VITE_API_BASE_URL`. El Gateway es el único punto de entrada del sistema y se encarga de redirigir cada petición al microservicio correspondiente.
 
 La instancia Axios agrega automáticamente el encabezado:
 
@@ -121,7 +121,7 @@ La instancia Axios agrega automáticamente el encabezado:
 Authorization: Bearer {token}
 ```
 
-cuando existe una sesión almacenada en `localStorage`.
+cuando existe una cuenta Microsoft activa; el Access Token se obtiene mediante MSAL y no se almacena manualmente en `localStorage`.
 
 Todas las llamadas funcionales pasan por servicios ubicados en `src/services` o, en algunos flujos de edición y eliminación, usan directamente la misma instancia Axios. Las rutas observadas consumen el prefijo `/bff`, por ejemplo:
 
@@ -135,16 +135,16 @@ Todas las llamadas funcionales pasan por servicios ubicados en `src/services` o,
 
 Aunque el prefijo `/bff` se mantiene por compatibilidad con el proyecto original, actualmente las solicitudes son atendidas por el API Gateway, que redirige cada petición al microservicio correspondiente.
 
-La aplicación maneja la sesión con `AuthContext`, que persiste `token`, `userId`, `nombre`, `email` y `rol`. `ProtectedRoute` valida sesión y rol antes de permitir acceso a rutas privadas.
+La aplicación maneja la sesión con `AuthContext`, que obtiene los datos locales vinculados mediante `GET /bff/usuarios/me`. `ProtectedRoute` espera la inicialización de MSAL y valida la sesión local vinculada y el rol antes de permitir acceso a rutas privadas.
 
 ## Seguridad
 
-La autenticación se basa en tokens JWT emitidos por el backend.
+La autenticación normal se basa en Microsoft Entra ID mediante MSAL. El backend valida el Access Token en cada solicitud protegida.
 
 Una vez autenticado el usuario:
 
-- El token se almacena en `localStorage`.
-- Axios incorpora automáticamente el encabezado `Authorization: Bearer {token}` en cada solicitud.
+- MSAL mantiene su propia caché de sesión.
+- Axios obtiene silenciosamente un Access Token de Microsoft e incorpora el encabezado `Authorization: Bearer {token}` en cada solicitud.
 - `ProtectedRoute` verifica la existencia del token y el rol del usuario antes de permitir el acceso a rutas privadas o administrativas.
 
 ## Funcionalidades
@@ -318,9 +318,7 @@ npm run preview
 
 ## Variables de entorno
 
-En el código revisado no se utilizan variables de entorno `VITE_` ni archivos `.env`. La URL del backend está fijada directamente en `src/api/axiosConfig.js` como `http://localhost:8080`.
-
-Si el backend cambia de entorno, esa constante debe ajustarse en el archivo de configuración de Axios.
+La URL del backend se configura mediante la variable `VITE_API_BASE_URL` en `.env` o `.env.example`. Axios, `AuthContext` y las pruebas temporales de `Login.jsx` utilizan esa misma base para acceder al API Gateway.
 
 ## Scripts
 

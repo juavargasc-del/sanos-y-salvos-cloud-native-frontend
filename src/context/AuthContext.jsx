@@ -1,111 +1,161 @@
-import { createContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useIsAuthenticated, useMsal } from "@azure/msal-react";
 
-const AUTH_STORAGE_KEYS = ["token", "userId", "nombre", "email", "rol"];
+import { loginRequest } from "../authConfig";
+
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+const LEGACY_AUTH_STORAGE_KEYS = ["token", "userId", "nombre", "email", "rol"];
+const EMPTY_AUTH = {
+  token: null,
+  userId: null,
+  nombre: null,
+  email: null,
+  rol: null,
+  isAuthenticated: false,
+  isLinked: false,
+};
 
 export const AuthContext = createContext(null);
 
-const readStoredSession = () => {
-  const token = localStorage.getItem("token");
-  const storedUserId = localStorage.getItem("userId");
-
-  if (!token) {
-    return {
-      token: null,
-      userId: null,
-      nombre: null,
-      email: null,
-      rol: null,
-      isAuthenticated: false,
-    };
-  }
-
-  return {
-    token,
-    userId: storedUserId ? Number(storedUserId) : null,
-    nombre: localStorage.getItem("nombre"),
-    email: localStorage.getItem("email"),
-    rol: localStorage.getItem("rol"),
-    isAuthenticated: true,
-  };
+const clearLegacySession = () => {
+  LEGACY_AUTH_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
 };
 
 export function AuthProvider({ children }) {
-  const [auth, setAuth] = useState(readStoredSession);
+  const { instance, accounts } = useMsal();
+  const isMicrosoftAuthenticated = useIsAuthenticated();
+  const [auth, setAuth] = useState(EMPTY_AUTH);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const initializationRef = useRef(null);
 
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-
-    if (!token) {
-      setAuth({
-        token: null,
-        userId: null,
-        nombre: null,
-        email: null,
-        rol: null,
-        isAuthenticated: false,
-      });
-      return;
-    }
-
-    setAuth({
-      token,
-      userId: localStorage.getItem("userId"),
-      nombre: localStorage.getItem("nombre"),
-      email: localStorage.getItem("email"),
-      rol: localStorage.getItem("rol"),
-      isAuthenticated: true,
-    });
+  const refreshSession = useCallback(() => {
+    setRefreshVersion((currentVersion) => currentVersion + 1);
   }, []);
 
-  const setSession = (sessionData) => {
-    const nextAuth = {
-      token: sessionData.token ?? null,
-      userId: sessionData.userId != null ? Number(sessionData.userId) : null,
-      nombre: sessionData.nombre ?? null,
-      email: sessionData.email ?? null,
-      rol: sessionData.rol ?? null,
-      isAuthenticated: Boolean(sessionData.token),
-    };
+  const clearSession = useCallback(async () => {
+    clearLegacySession();
+    setAuth(EMPTY_AUTH);
 
-    AUTH_STORAGE_KEYS.forEach((key) => {
-      const value = nextAuth[key];
+    const account = instance.getActiveAccount() ?? accounts[0];
 
-      if (value === null || value === undefined) {
-        localStorage.removeItem(key);
-        return;
+    if (account) {
+      try {
+        await instance.logoutRedirect({
+          account,
+          postLogoutRedirectUri: "http://localhost:5173/",
+        });
+      } catch {
+        // El estado local ya fue limpiado; MSAL puede reintentar el cierre en la siguiente interacción.
       }
+    }
+  }, [accounts, instance]);
 
-      localStorage.setItem(key, String(value));
+  useEffect(() => {
+    let isCurrent = true;
+    const account = instance.getActiveAccount() ?? accounts[0];
+
+    if (!isMicrosoftAuthenticated || !account) {
+      clearLegacySession();
+      initializationRef.current = null;
+
+      Promise.resolve().then(() => {
+        if (isCurrent) {
+          setAuth(EMPTY_AUTH);
+          setIsInitializing(false);
+        }
+      });
+
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    const initializationKey = `${account.homeAccountId}:${refreshVersion}`;
+
+    if (!initializationRef.current || initializationRef.current.key !== initializationKey) {
+      const initializationPromise = (async () => {
+        const tokenResponse = await instance.acquireTokenSilent({
+          ...loginRequest,
+          account,
+        });
+        const userResponse = await fetch(`${apiBaseUrl}/bff/usuarios/me`, {
+          headers: {
+            Authorization: `Bearer ${tokenResponse.accessToken}`,
+          },
+        });
+
+        let userData;
+
+        try {
+          userData = await userResponse.json();
+        } catch {
+          userData = null;
+        }
+
+        if (!userResponse.ok || !userData) {
+          throw new Error("No se pudo consultar el usuario Microsoft.");
+        }
+
+        return userData;
+      })();
+
+      initializationRef.current = { key: initializationKey, promise: initializationPromise };
+    }
+
+    Promise.resolve().then(() => {
+      if (isCurrent) {
+        setIsInitializing(true);
+      }
     });
 
-    setAuth(nextAuth);
-  };
+    initializationRef.current.promise
+      .then((userData) => {
+        if (!isCurrent) {
+          return;
+        }
 
-  const clearSession = () => {
-    AUTH_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+        clearLegacySession();
 
-    setAuth({
-      token: null,
-      userId: null,
-      nombre: null,
-      email: null,
-      rol: null,
-      isAuthenticated: false,
-    });
-  };
+        if (userData.linked === true && Number.isFinite(Number(userData.userId))) {
+          setAuth({
+            ...EMPTY_AUTH,
+            userId: Number(userData.userId),
+            nombre: userData.nombre ?? null,
+            email: userData.email ?? null,
+            rol: userData.rol ?? null,
+            isAuthenticated: true,
+            isLinked: true,
+          });
+        } else {
+          setAuth({ ...EMPTY_AUTH, isLinked: false });
+        }
+      })
+      .catch(() => {
+        if (isCurrent) {
+          clearLegacySession();
+          setAuth({ ...EMPTY_AUTH, isLinked: false });
+        }
+      })
+      .finally(() => {
+        if (isCurrent) {
+          setIsInitializing(false);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [accounts, instance, isMicrosoftAuthenticated, refreshVersion]);
 
   const value = useMemo(
     () => ({
-      token: auth.token,
-      userId: auth.userId,
-      nombre: auth.nombre,
-      email: auth.email,
-      rol: auth.rol,
-      isAuthenticated: auth.isAuthenticated,
-      setSession,
+      ...auth,
+      isInitializing,
+      refreshSession,
       clearSession,
     }),
-    [auth]
+    [auth, clearSession, isInitializing, refreshSession]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
